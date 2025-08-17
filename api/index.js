@@ -20,7 +20,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect('mongodb+srv://gmchalanaprabhashwara:TLDriOsDzhin84R3@cloudpos.lpdd0vp.mongodb.net/pos-system')
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error('MongoDB connection error:', err));
 
