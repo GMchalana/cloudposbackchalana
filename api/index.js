@@ -37,6 +37,38 @@ app.use('/api/orders', require('../routes/orders'));
 app.use('/api/reports', require('../routes/reports'));
 app.use('/api/dashboard', require('../routes/dashboard'));
 
+router.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+    
+    if (!user || !(await user.comparePassword(password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign(
+      { id: user._id, username: user.username, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    res.json({ 
+      token,
+      user: { 
+        id: user._id, 
+        username: user.username, 
+        email: user.email, 
+        role: user.role 
+      } 
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Error handler
 app.use(errorHandler);
 
