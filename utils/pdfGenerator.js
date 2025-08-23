@@ -95,4 +95,65 @@ const generatePDF = async (order, size = 'a4') => {
   });
 };
 
-module.exports = { generatePDF };
+
+
+const generateReceipt = async (order) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: [226, 600], // ~80mm wide, height grows dynamically
+        margin: 10
+      });
+
+      const buffers = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        const pdfData = Buffer.concat(buffers);
+        resolve(pdfData);
+      });
+
+      // --- Header ---
+      doc.fontSize(12).font('Helvetica-Bold').text('STORE NAME', { align: 'center' });
+      doc.fontSize(10).text('123 Main Street, City', { align: 'center' });
+      doc.text('Tel: +1 234 567 890', { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(10).font('Helvetica').text(`Order #: ${order.orderNumber}`);
+      doc.text(`Date: ${order.createdAt.toLocaleString()}`);
+      doc.text(`Cashier: ${order.createdBy?.username || 'N/A'}`);
+      doc.moveDown();
+
+      // --- Items ---
+      doc.font('Helvetica-Bold').text('Item        Qty   Price   Total');
+      doc.moveDown(0.2);
+
+      order.items.forEach(item => {
+        doc.font('Helvetica').fontSize(9)
+          .text(`${item.product.name.substring(0, 12).padEnd(12)} ${item.quantity}   $${item.price.toFixed(2)}   $${item.total.toFixed(2)}`);
+      });
+
+      doc.moveDown();
+
+      // --- Totals ---
+      doc.font('Helvetica-Bold').fontSize(10);
+      doc.text(`Subtotal:   $${order.subtotal.toFixed(2)}`);
+      if (order.tax > 0) doc.text(`Tax:        $${order.tax.toFixed(2)}`);
+      if (order.discount > 0) doc.text(`Discount:  -$${order.discount.toFixed(2)}`);
+      doc.text(`TOTAL:      $${order.total.toFixed(2)}`);
+
+      doc.moveDown(1);
+
+      // --- Footer ---
+      doc.font('Helvetica').fontSize(9)
+        .text('Thank you for shopping!', { align: 'center' })
+        .moveDown(0.5)
+        .text('Powered by YourPOS', { align: 'center' });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+module.exports = { generatePDF, generateReceipt };

@@ -4,7 +4,7 @@ const router = express.Router();
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { authenticate, authorize } = require('../middleware/auth');
-const { generatePDF } = require('../utils/pdfGenerator');
+const { generatePDF, generateReceipt } = require('../utils/pdfGenerator');
 // const mongoose = require('mongoose');
 
 // Create new order
@@ -117,6 +117,7 @@ router.post('/', async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Order created successfully',
+      orderId: savedOrder._id,
       order: savedOrder
     });
 
@@ -250,5 +251,28 @@ router.put('/:id/status',  async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+
+router.get('/:id/receipt', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('items.product', 'name price')
+      .populate('createdBy', 'username');
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const pdfBuffer = await generateReceipt(order);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename=receipt_${order.orderNumber}.pdf`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Receipt generation error:', error);   // 👈 add this
+    res.status(500).json({ message: 'Error generating receipt' });
+  }
+});
+
 
 module.exports = router;
