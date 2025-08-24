@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const Customer = require('../models/Customers');
 const { authenticate, authorize } = require('../middleware/auth');
 const { generatePDF, generateReceipt } = require('../utils/pdfGenerator');
 // const mongoose = require('mongoose');
