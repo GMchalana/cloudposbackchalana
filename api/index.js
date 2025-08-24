@@ -36,7 +36,7 @@ app.use('/api/products', require('../routes/products'));
 app.use('/api/orders', require('../routes/orders'));
 app.use('/api/reports', require('../routes/reports'));
 app.use('/api/dashboard', require('../routes/dashboard'));
-app.use('/api/customers', require('./routes/customers'));
+app.use('/api/customers', require('../routes/customers'));
 
 // Error handler
 app.use(errorHandler);
