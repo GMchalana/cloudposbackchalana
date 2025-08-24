@@ -5,7 +5,7 @@ const Category = require('../models/Category');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Get all categories
-router.get('/', authenticate, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const categories = await Category.find().sort({ name: 1 });
     res.json(categories);
@@ -15,7 +15,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Create category (admin only)
-router.post('/', authenticate, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, description } = req.body;
     const category = new Category({ name, description });
@@ -31,7 +31,7 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 // Update category (admin only)
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { name, description } = req.body;
     const category = await Category.findByIdAndUpdate(
@@ -49,7 +49,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // Delete category (admin only)
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const category = await Category.findByIdAndDelete(req.params.id);
     if (!category) {
