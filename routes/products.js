@@ -29,12 +29,12 @@ router.get('/', async (req, res) => {
     const { category, search, lowStock } = req.query;
     let query = {};
 
+    // Filter by category name instead of category ID
     if (category) query.category = category;
     if (search) query.name = { $regex: search, $options: 'i' };
     if (lowStock === 'true') query.stock = { $lte: 5 };
 
     const products = await Product.find(query)
-      .populate('category', 'name')
       .sort({ name: 1 });
 
     res.json(products);
@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
 // Get single product
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('category', 'name');
+    const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -71,10 +71,16 @@ router.post('/', upload.single('image'), async (req, res) => {
       lowStockThreshold 
     } = req.body;
 
-    // Check if category exists
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
-      return res.status(400).json({ message: 'Category not found' });
+    // Get category name instead of checking if category ID exists
+    let categoryName = category;
+    
+    // If category is provided as an ID, convert it to name
+    if (category && category.match(/^[0-9a-fA-F]{24}$/)) {
+      const categoryDoc = await Category.findById(category);
+      if (!categoryDoc) {
+        return res.status(400).json({ message: 'Category not found' });
+      }
+      categoryName = categoryDoc.name;
     }
 
     let imageUrl = null;
@@ -96,7 +102,7 @@ router.post('/', upload.single('image'), async (req, res) => {
       description,
       price,
       costPrice,
-      category,
+      category: categoryName, // Store category name instead of ID
       sku,
       barcode,
       stock: stock || 0,
@@ -133,12 +139,15 @@ router.put('/:id', upload.single('image'), async (req, res) => {
       removeImage
     } = req.body;
 
-    // Check if category exists
-    if (category) {
-      const categoryExists = await Category.findById(category);
-      if (!categoryExists) {
+    let categoryName = category;
+    
+    // If category is provided as an ID, convert it to name
+    if (category && category.match(/^[0-9a-fA-F]{24}$/)) {
+      const categoryDoc = await Category.findById(category);
+      if (!categoryDoc) {
         return res.status(400).json({ message: 'Category not found' });
       }
+      categoryName = categoryDoc.name;
     }
 
     const existingProduct = await Product.findById(req.params.id);
@@ -179,7 +188,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
         description, 
         price, 
         costPrice, 
-        category, 
+        category: categoryName, // Store category name instead of ID
         sku, 
         barcode, 
         stock, 
