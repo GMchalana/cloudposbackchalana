@@ -2,10 +2,17 @@
 const mongoose = require('mongoose');
 
 const orderItemSchema = new mongoose.Schema({
-  product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  // Store product data directly instead of references
+  productId: { type: String, required: true }, // Keep original ID for reference but not as ObjectId
+  productName: { type: String, required: true },
+  productCategory: { type: String, required: true },
+  productBarcode: { type: String },
   quantity: { type: Number, required: true },
-  price: { type: Number, required: true },
-  total: { type: Number, required: true }
+  sellingPrice: { type: Number, required: true }, // Price sold to customer
+  costPrice: { type: Number, required: true }, // Cost price of the product
+  itemTotal: { type: Number, required: true }, // quantity * sellingPrice
+  itemCost: { type: Number, required: true }, // quantity * costPrice
+  itemProfit: { type: Number, required: true } // itemTotal - itemCost
 });
 
 // Embedded customer schema to store customer data directly in order
@@ -25,6 +32,12 @@ const orderSchema = new mongoose.Schema({
   tax: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
   total: { type: Number, required: true },
+  
+  // Add cost and profit tracking
+  totalCost: { type: Number, required: true }, // Total cost of all items
+  totalProfit: { type: Number, required: true }, // Total profit before tax (subtotal - totalCost - discount)
+  profitMargin: { type: Number, required: true }, // Profit percentage ((totalProfit / totalCost) * 100)
+  
   paymentMethod: { type: String, enum: ['cash', 'card', 'transfer'], required: true },
   status: { type: String, enum: ['pending', 'completed', 'cancelled'], default: 'completed' },
   
@@ -48,5 +61,7 @@ orderSchema.index({ 'customer.name': 1 });
 orderSchema.index({ 'customer.phoneNumber': 1 });
 orderSchema.index({ orderNumber: 1 });
 orderSchema.index({ createdAt: -1 });
+orderSchema.index({ totalProfit: -1 }); // For profit analysis
+orderSchema.index({ profitMargin: -1 }); // For margin analysis
 
 module.exports = mongoose.model('Order', orderSchema);

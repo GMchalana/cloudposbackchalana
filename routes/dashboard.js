@@ -7,9 +7,9 @@ const Category = require('../models/Category');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // Get dashboard overview statistics
-router.get('/overview',  async (req, res) => {
+router.get('/overview', async (req, res) => {
   try {
-    const { period = '30' } = req.query; // default to last 30 days
+    const { period = '30' } = req.query;
     const days = parseInt(period);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -31,11 +31,12 @@ router.get('/overview',  async (req, res) => {
           _id: null,
           totalRevenue: { $sum: '$total' },
           totalOrders: { $sum: 1 },
-          totalItems: { 
-            $sum: { 
-              $sum: '$items.quantity' 
-            } 
+          totalItems: {
+            $sum: {
+              $sum: '$items.quantity'
+            }
           },
+          totalProfit: { $sum: '$totalProfit' },
           averageOrderValue: { $avg: '$total' }
         }
       }
@@ -69,13 +70,13 @@ router.get('/overview',  async (req, res) => {
           total: [{ $match: { isActive: true } }, { $count: "count" }],
           outOfStock: [{ $match: { stock: 0, isActive: true } }, { $count: "count" }],
           lowStock: [
-            { 
-              $match: { 
+            {
+              $match: {
                 $expr: { $lte: ['$stock', '$lowStockThreshold'] },
                 stock: { $gt: 0 },
-                isActive: true 
-              } 
-            }, 
+                isActive: true
+              }
+            },
             { $count: "count" }
           ],
           totalValue: [
@@ -86,44 +87,38 @@ router.get('/overview',  async (req, res) => {
       }
     ]);
 
-    // Category statistics
-    const categoryStats = await Category.aggregate([
+    // Updated Category statistics to use denormalized 'category' string field
+    const categoryStats = await Product.aggregate([
+      { $match: { isActive: true } },
       {
-        $lookup: {
-          from: 'products',
-          localField: '_id',
-          foreignField: 'category',
-          as: 'products'
+        $group: {
+          _id: '$category',
+          productCount: { $sum: 1 },
+          totalStock: { $sum: '$stock' },
+          totalValue: { $sum: { $multiply: ['$stock', '$costPrice'] } }
         }
       },
       {
         $project: {
-          name: 1,
-          productCount: { $size: '$products' },
-          totalStock: { $sum: '$products.stock' },
-          totalValue: { 
-            $sum: { 
-              $map: {
-                input: '$products',
-                as: 'product',
-                in: { $multiply: ['$$product.stock', '$$product.costPrice'] }
-              }
-            }
-          }
+          _id: 0, // Exclude _id
+          name: '$_id',
+          productCount: 1,
+          totalStock: 1,
+          totalValue: 1
         }
       },
       { $sort: { productCount: -1 } }
     ]);
 
     // Format response
-    const currentSales = salesStats[0] || { totalRevenue: 0, totalOrders: 0, totalItems: 0, averageOrderValue: 0 };
+    const currentSales = salesStats[0] || { totalRevenue: 0, totalOrders: 0, totalItems: 0, totalProfit: 0, averageOrderValue: 0 };
     const previousSales = prevSalesStats[0] || { totalRevenue: 0, totalOrders: 0 };
 
-    const revenueGrowth = previousSales.totalRevenue > 0 
+    const revenueGrowth = previousSales.totalRevenue > 0
       ? ((currentSales.totalRevenue - previousSales.totalRevenue) / previousSales.totalRevenue * 100)
       : 0;
 
-    const ordersGrowth = previousSales.totalOrders > 0 
+    const ordersGrowth = previousSales.totalOrders > 0
       ? ((currentSales.totalOrders - previousSales.totalOrders) / previousSales.totalOrders * 100)
       : 0;
 
@@ -138,6 +133,7 @@ router.get('/overview',  async (req, res) => {
         totalRevenue: currentSales.totalRevenue,
         totalOrders: currentSales.totalOrders,
         totalItems: currentSales.totalItems,
+        totalProfit: currentSales.totalProfit,
         averageOrderValue: currentSales.averageOrderValue,
         revenueGrowth,
         ordersGrowth
@@ -161,7 +157,7 @@ router.get('/overview',  async (req, res) => {
 // Get sales chart data
 router.get('/sales-chart', async (req, res) => {
   try {
-    const { period = '7' } = req.query; // default to last 7 days
+    const { period = '7' } = req.query;
     const days = parseInt(period);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -180,7 +176,8 @@ router.get('/sales-chart', async (req, res) => {
             $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
           },
           revenue: { $sum: '$total' },
-          orders: { $sum: 1 }
+          orders: { $sum: 1 },
+          profit: { $sum: '$totalProfit' }
         }
       },
       { $sort: { '_id': 1 } }
@@ -197,7 +194,8 @@ router.get('/sales-chart', async (req, res) => {
       chartData.push({
         date: dateStr,
         revenue: existingData?.revenue || 0,
-        orders: existingData?.orders || 0
+        orders: existingData?.orders || 0,
+        profit: existingData?.profit || 0,
       });
     }
 
@@ -209,7 +207,8 @@ router.get('/sales-chart', async (req, res) => {
 });
 
 // Get top products
-router.get('/top-products',  async (req, res) => {
+// routes/dashboard.js
+router.get('/top-products', async (req, res) => {
   try {
     const { limit = 5 } = req.query;
     const limitNum = parseInt(limit);
@@ -219,26 +218,34 @@ router.get('/top-products',  async (req, res) => {
       { $unwind: '$items' },
       {
         $group: {
-          _id: '$items.product',
+          _id: '$items.productId',
+          name: { $first: '$items.productName' },
           totalQuantity: { $sum: '$items.quantity' },
-          totalRevenue: { $sum: '$items.total' }
+          totalRevenue: { $sum: '$items.itemTotal' },
         }
       },
+      // --- FIX: Add a stage to convert _id string to ObjectId ---
+      {
+        $addFields: {
+          convertedId: { $toObjectId: '$_id' }
+        }
+      },
+      // --- Now, use the new convertedId for the lookup ---
       {
         $lookup: {
           from: 'products',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'product'
+          localField: 'convertedId', // Use the converted ObjectId
+          foreignField: '_id', // Matches the product's ObjectId
+          as: 'productInfo'
         }
       },
-      { $unwind: '$product' },
+      { $unwind: '$productInfo' },
       {
         $project: {
-          name: '$product.name',
+          name: 1,
           totalQuantity: 1,
           totalRevenue: 1,
-          currentStock: '$product.stock'
+          currentStock: '$productInfo.stock'
         }
       },
       { $sort: { totalQuantity: -1 } },
@@ -261,8 +268,7 @@ router.get('/recent-orders', async (req, res) => {
     const recentOrders = await Order.find({ status: 'completed' })
       .sort({ createdAt: -1 })
       .limit(limitNum)
-      .populate('items.product', 'name')
-      .select('orderNumber total paymentMethod customerName createdAt items');
+      .select('orderNumber total totalProfit paymentMethod customerName createdAt items.productName');
 
     res.json(recentOrders);
   } catch (error) {
@@ -272,16 +278,16 @@ router.get('/recent-orders', async (req, res) => {
 });
 
 // Get low stock alerts
-router.get('/low-stock-alerts',  async (req, res) => {
+router.get('/low-stock-alerts', async (req, res) => {
   try {
     const { limit = 10 } = req.query;
     const limitNum = parseInt(limit);
 
+    // Removed the populate call as 'category' is now a String
     const lowStockProducts = await Product.find({
       $expr: { $lte: ['$stock', '$lowStockThreshold'] },
       isActive: true
     })
-    .populate('category', 'name')
     .sort({ stock: 1 })
     .limit(limitNum)
     .select('name stock lowStockThreshold category');
