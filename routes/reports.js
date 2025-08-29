@@ -88,12 +88,10 @@ router.get('/sales', async (req, res) => {
 
     let start, end;
     if (year && month) {
-      // Monthly report logic
       start = new Date(year, month - 1, 1);
-      end = new Date(year, month, 0); // Last day of the month
+      end = new Date(year, month, 0);
       end.setHours(23, 59, 59, 999);
     } else {
-      // Date range report logic
       if (!startDate || !endDate) {
         return res.status(400).json({ message: 'Start date and end date are required for a date range report.' });
       }
@@ -102,11 +100,13 @@ router.get('/sales', async (req, res) => {
       end.setHours(23, 59, 59, 999);
     }
 
+    // 🔹 Populate createdBy field with username
     const orders = await Order.find({
       createdAt: { $gte: start, $lte: end },
       status: 'completed'
     })
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .populate({ path: 'createdBy', model: 'User', select: 'username email' }); 
 
     // Calculate summary statistics
     const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
@@ -129,22 +129,26 @@ router.get('/sales', async (req, res) => {
         totalItems,
         averageOrderValue
       },
-      orders,
+      orders: orders.map(order => ({
+        ...order.toObject(),
+        createdByName: order.createdBy?.username || order.createdBy?.email || 'N/A'
+      })),
       dateRange: { startDate: start.toISOString(), endDate: end.toISOString() }
     };
 
     if (format === 'csv') {
-      const csvHeader = 'Order Number,Date,Customer,Items,Total,Total Cost,Total Profit,Profit Margin,Payment Method\n';
+      const csvHeader = 'Order Number,Date,Customer,Items,Total,Total Cost,Total Profit,Profit Margin,Payment Method,Created By\n';
       const csvData = orders.map(order => [
         order.orderNumber,
         order.createdAt.toISOString().split('T')[0],
-        order.customer?.name || order.customerName || 'N/A', // Prioritize embedded customer data
+        order.customer?.name || order.customerName || 'N/A',
         order.items.length,
         order.total,
         order.totalCost,
         order.totalProfit,
         ((order.totalProfit / order.totalCost) * 100).toFixed(2) + '%',
-        order.paymentMethod
+        order.paymentMethod,
+        order.createdBy?.username || order.createdBy?.email || 'N/A'
       ].join(',')).join('\n');
       
       res.setHeader('Content-Type', 'text/csv');
