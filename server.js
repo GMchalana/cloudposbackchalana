@@ -42,6 +42,7 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/users', require('./routes/user'));
+app.use('/api/notifications', require('./routes/notification'));
 
 // Error handler
 app.use(errorHandler);
